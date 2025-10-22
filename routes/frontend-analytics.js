@@ -17,6 +17,13 @@ function getDateRange(req) {
 router.get('/time-analytics', async (req, res) => {
   try {
     const { startDate, endDate } = getDateRange(req);
+    console.log('📊 Time Analytics Request:', { 
+      startDate, 
+      endDate, 
+      user: req.user.email, 
+      role: req.user.role,
+      queryParams: req.query 
+    });
     
     // Base WHERE and params
     const whereClauses = ['t.date BETWEEN ? AND ?'];
@@ -76,19 +83,24 @@ router.get('/time-analytics', async (req, res) => {
     const averageHoursPerDay = totalDays > 0 ? Math.round((totalHours / totalDays) * 100) / 100 : 0;
     const averageHoursPerWeek = totalDays > 0 ? Math.round((totalHours / (totalDays / 7)) * 100) / 100 : 0;
     const averageHoursPerUser = uniqueUsers > 0 ? Math.round((totalHours / uniqueUsers) * 100) / 100 : 0;
+    const averageHoursPerUserPerDay = (uniqueUsers > 0 && totalDays > 0) 
+      ? Math.round((totalHours / (uniqueUsers * totalDays)) * 100) / 100 
+      : 0;
     
-    // Calculate compliance rate based on actual work patterns
-    // Assuming standard 8-hour workday, but calculate based on actual data
+    // Calculate compliance rate based on 8-hour workday per user per day
     const expectedHoursPerDay = 8;
-    const actualHoursPerDay = totalDays > 0 ? totalHours / totalDays : 0;
-    const complianceRate = actualHoursPerDay > 0 ? Math.min(100, Math.round((actualHoursPerDay / expectedHoursPerDay) * 100)) : 100;
+    const complianceRate = averageHoursPerUserPerDay > 0 
+      ? Math.min(100, Math.round((averageHoursPerUserPerDay / expectedHoursPerDay) * 100)) 
+      : 0;
     
     // Calculate overtime hours (hours over 8 per day per user)
     const expectedTotalHours = uniqueUsers * expectedHoursPerDay * totalDays;
     const overtimeHours = totalHours > expectedTotalHours ? Math.round((totalHours - expectedTotalHours) * 100) / 100 : 0;
     
     // Calculate utilization rate (actual vs expected)
-    const utilizationRate = expectedTotalHours > 0 ? Math.min(100, Math.round((totalHours / expectedTotalHours) * 100)) : 100;
+    const utilizationRate = expectedTotalHours > 0 
+      ? Math.min(100, Math.round((totalHours / expectedTotalHours) * 100)) 
+      : 0;
     
     const response = {
       totalHours: totalHours,
@@ -107,6 +119,7 @@ router.get('/time-analytics', async (req, res) => {
       utilizationRate: utilizationRate
     };
 
+    console.log('✅ Time Analytics Response:', response);
     res.json(response);
   } catch (error) {
     console.error('Frontend time analytics error:', error);
@@ -156,16 +169,19 @@ router.get('/department-analytics', async (req, res) => {
 
     // Format for frontend
     const response = deptRows.map(dept => {
-      // Calculate real compliance rate based on actual work patterns
+      // Compliance per user per day
       const expectedHoursPerDay = 8;
-      const actualHoursPerDay = dept.totalDays > 0 ? dept.totalHours / dept.totalDays : 0;
-      const complianceRate = actualHoursPerDay > 0 ? 
-        Math.min(100, Math.round((actualHoursPerDay / expectedHoursPerDay) * 100)) : 100;
+      const avgPerUserPerDay = (dept.userCount > 0 && dept.totalDays > 0)
+        ? dept.totalHours / (dept.userCount * dept.totalDays)
+        : 0;
+      const complianceRate = avgPerUserPerDay > 0 
+        ? Math.min(100, Math.round((avgPerUserPerDay / expectedHoursPerDay) * 100)) 
+        : 0;
       
-      // Calculate real utilization rate (actual vs expected hours per user per day)
+      // Utilization = actual vs expected (per user per day baseline)
       const expectedTotalHours = dept.userCount * expectedHoursPerDay * dept.totalDays;
       const utilizationRate = expectedTotalHours > 0 ? 
-        Math.min(100, Math.round((dept.totalHours / expectedTotalHours) * 100)) : 100;
+        Math.min(100, Math.round((dept.totalHours / expectedTotalHours) * 100)) : 0;
       
       // Calculate billable percentage
       const billablePercentage = dept.totalEntries > 0 ? 
@@ -238,16 +254,16 @@ router.get('/user-analytics', async (req, res) => {
 
     // Format for frontend
     const response = userRows.map(user => {
-      // Calculate real compliance rate based on actual work patterns
+      // Compliance per user per day
       const expectedHoursPerDay = 8;
-      const actualHoursPerDay = user.totalDays > 0 ? user.totalHours / user.totalDays : 0;
-      const complianceRate = actualHoursPerDay > 0 ? 
-        Math.min(100, Math.round((actualHoursPerDay / expectedHoursPerDay) * 100)) : 100;
+      const avgPerUserPerDay = user.totalDays > 0 ? user.totalHours / user.totalDays : 0;
+      const complianceRate = avgPerUserPerDay > 0 ? 
+        Math.min(100, Math.round((avgPerUserPerDay / expectedHoursPerDay) * 100)) : 0;
       
-      // Calculate real utilization rate (actual vs expected hours per day)
+      // Utilization = actual vs expected hours per day
       const expectedTotalHours = expectedHoursPerDay * user.totalDays;
       const utilizationRate = expectedTotalHours > 0 ? 
-        Math.min(100, Math.round((user.totalHours / expectedTotalHours) * 100)) : 100;
+        Math.min(100, Math.round((user.totalHours / expectedTotalHours) * 100)) : 0;
       
       // Calculate billable percentage
       const billablePercentage = user.totalEntries > 0 ? 

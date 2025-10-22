@@ -3,11 +3,166 @@ const { query } = require('../config/database');
 const { authenticateToken } = require('../middleware/auth');
 const router = express.Router();
 
-// All analytics routes are protected by authenticateToken at server level
-// Scoping rules:
-// - ADMIN: all data (optionally filter by department via ?department=)
-// - SUPERVISOR: only users within their own department
-// - STAFF: only own data
+// Dashboard Metrics Endpoint - Optimized for Reports Dashboard
+router.get('/dashboard-metrics', authenticateToken, async (req, res) => {
+  try {
+    console.log('📊 Dashboard metrics request from:', req.user.email, 'Role:', req.user.role);
+    console.log('🔍 Query params:', req.query);
+
+    // Build WHERE clause based on filters and user role
+    let whereClause = '';
+    let queryParams = [];
+    
+    // Role-based filtering
+    if (req.user.role === 'SUPERVISOR' && req.user.department) {
+      whereClause = 'WHERE te.department = ?';
+      queryParams.push(req.user.department);
+    } else if (req.user.role === 'STAFF') {
+      whereClause = 'WHERE te.user_id = ?';
+      queryParams.push(req.user.id);
+    }
+    
+    // Additional filters
+    if (req.query.department) {
+      const condition = 'te.department = ?';
+      whereClause = whereClause ? `${whereClause} AND ${condition}` : `WHERE ${condition}`;
+      queryParams.push(req.query.department);
+    }
+    
+    if (req.query.userEmail) {
+      const condition = 'u.email = ?';
+      whereClause = whereClause ? `${whereClause} AND ${condition}` : `WHERE ${condition}`;
+      queryParams.push(req.query.userEmail);
+    }
+    
+    if (req.query.status) {
+      const condition = 'te.status = ?';
+      whereClause = whereClause ? `${whereClause} AND ${condition}` : `WHERE ${condition}`;
+      queryParams.push(req.query.status);
+    }
+    
+    if (req.query.dateFrom) {
+      const condition = 'te.date >= ?';
+      whereClause = whereClause ? `${whereClause} AND ${condition}` : `WHERE ${condition}`;
+      queryParams.push(req.query.dateFrom);
+    }
+    
+    if (req.query.dateTo) {
+      const condition = 'te.date <= ?';
+      whereClause = whereClause ? `${whereClause} AND ${condition}` : `WHERE ${condition}`;
+      queryParams.push(req.query.dateTo);
+    }
+
+    console.log('🔍 WHERE clause:', whereClause);
+    console.log('🔍 Query params:', queryParams);
+
+    // 1. Overall Metrics (optimized with COUNT(id) instead of COUNT(*))
+              // Optimized metrics query with proper indexing support
+              const metricsQuery = `
+                SELECT 
+                  COUNT(te.id) as totalEntries,
+                  COALESCE(SUM(te.total_hours), 0) as totalHours,
+                  COALESCE(SUM(CASE WHEN te.billable = 1 THEN te.total_hours ELSE 0 END), 0) as billableHours,
+                  COUNT(DISTINCT te.user_id) as activeUsers,
+                  COUNT(DISTINCT te.department) as departments,
+                  COALESCE(AVG(te.total_hours), 0) as averageHoursPerEntry,
+                  SUM(CASE WHEN te.status = 'NotStarted' THEN 1 ELSE 0 END) as notStartedTasks,
+                  SUM(CASE WHEN te.status = 'CarriedOut' THEN 1 ELSE 0 END) as carriedOutTasks,
+                  SUM(CASE WHEN te.status = 'Completed' THEN 1 ELSE 0 END) as completedTasks
+                FROM timesheet_entries te
+                JOIN users u ON te.user_id = u.id
+                ${whereClause}
+              `;
+    
+    const [metricsResult] = await query(metricsQuery, queryParams);
+    const metrics = metricsResult[0];
+
+    // 2. Department Stats (simplified)
+    const deptStatsQuery = `
+      SELECT 
+        te.department,
+        COUNT(te.id) as totalEntries,
+        COALESCE(SUM(te.total_hours), 0) as totalHours,
+        COALESCE(SUM(CASE WHEN te.billable = 1 THEN te.total_hours ELSE 0 END), 0) as billableHours,
+        COALESCE(AVG(te.total_hours), 0) as averageHours,
+        ROUND((SUM(CASE WHEN te.status = 'Completed' THEN 1 ELSE 0 END) * 100.0 / COUNT(te.id)), 2) as completionRate,
+        0 as utilization
+      FROM timesheet_entries te
+      JOIN users u ON te.user_id = u.id
+      ${whereClause}
+      GROUP BY te.department
+      ORDER BY totalHours DESC
+    `;
+    
+    const [deptStatsResult] = await query(deptStatsQuery, queryParams);
+
+    // 3. User Stats (simplified)
+    const userStatsQuery = `
+      SELECT 
+        u.id as userId,
+        CONCAT(u.first_name, ' ', u.last_name) as userName,
+        u.email as userEmail,
+        COUNT(te.id) as totalEntries,
+        COALESCE(SUM(te.total_hours), 0) as totalHours,
+        COALESCE(SUM(CASE WHEN te.billable = 1 THEN te.total_hours ELSE 0 END), 0) as billableHours,
+        COALESCE(AVG(te.total_hours), 0) as averageHours,
+        MAX(te.updated_at) as lastActivity,
+        0 as utilization
+      FROM timesheet_entries te
+      JOIN users u ON te.user_id = u.id
+      ${whereClause}
+      GROUP BY u.id, u.first_name, u.last_name, u.email
+      ORDER BY totalHours DESC
+    `;
+    
+    const [userStatsResult] = await query(userStatsQuery, queryParams);
+
+    console.log('✅ Dashboard metrics calculated:', {
+      totalEntries: metrics.totalEntries,
+      totalHours: metrics.totalHours,
+      departments: deptStatsResult.length,
+      users: userStatsResult.length
+    });
+
+    res.json({
+      metrics: {
+        totalEntries: parseInt(metrics.totalEntries) || 0,
+        totalHours: parseFloat(metrics.totalHours) || 0,
+        billableHours: parseFloat(metrics.billableHours) || 0,
+        activeUsers: parseInt(metrics.activeUsers) || 0,
+        departments: parseInt(metrics.departments) || 0,
+        averageHoursPerEntry: parseFloat(metrics.averageHoursPerEntry) || 0,
+        notStartedTasks: parseInt(metrics.notStartedTasks) || 0,
+        carriedOutTasks: parseInt(metrics.carriedOutTasks) || 0,
+        completedTasks: parseInt(metrics.completedTasks) || 0
+      },
+      departmentStats: deptStatsResult.map(dept => ({
+        department: dept.department,
+        totalEntries: parseInt(dept.totalEntries) || 0,
+        totalHours: parseFloat(dept.totalHours) || 0,
+        billableHours: parseFloat(dept.billableHours) || 0,
+        averageHours: parseFloat(dept.averageHours) || 0,
+        completionRate: parseFloat(dept.completionRate) || 0,
+        utilization: parseFloat(dept.utilization) || 0
+      })),
+      userStats: userStatsResult.map(user => ({
+        userId: user.userId,
+        userName: user.userName,
+        userEmail: user.userEmail,
+        totalEntries: parseInt(user.totalEntries) || 0,
+        totalHours: parseFloat(user.totalHours) || 0,
+        billableHours: parseFloat(user.billableHours) || 0,
+        averageHours: parseFloat(user.averageHours) || 0,
+        lastActivity: user.lastActivity,
+        utilization: parseFloat(user.utilization) || 0
+      }))
+    });
+
+  } catch (error) {
+    console.error('❌ Dashboard metrics error:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard metrics' });
+  }
+});
 
 function getDateRange(req) {
   const { start, end } = req.query;
@@ -20,6 +175,11 @@ function getDateRange(req) {
 router.get('/summary', async (req, res) => {
   try {
     const { startDate, endDate } = getDateRange(req);
+    
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 5;
+    const offset = (page - 1) * limit;
 
     // Base WHERE and params
     const whereClauses = ['t.date BETWEEN ? AND ?'];
@@ -44,7 +204,17 @@ router.get('/summary', async (req, res) => {
 
     const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
 
-    // Per-user breakdown within scope
+    // Count total users for pagination
+    const countUserSql = `
+      SELECT COUNT(DISTINCT u.id) as total
+      FROM timesheet_entries t
+      JOIN users u ON u.id = t.user_id
+      ${whereSql}
+    `;
+    const [countUserRows] = await query(countUserSql, params);
+    const totalUsers = countUserRows[0]?.total || 0;
+
+    // Per-user breakdown within scope with pagination
     const perUserSql = `
       SELECT 
         u.id AS user_id,
@@ -59,9 +229,10 @@ router.get('/summary', async (req, res) => {
       ${whereSql}
       GROUP BY u.id
       ORDER BY total_hours DESC
+      LIMIT ? OFFSET ?
     `;
 
-    const [perUserRows] = await query(perUserSql, params);
+    const [perUserRows] = await query(perUserSql, [...params, limit, offset]);
 
     // Aggregate totals within scope
     const totalsSql = `
@@ -91,7 +262,13 @@ router.get('/summary', async (req, res) => {
       range: { start: startDate, end: endDate },
       totals,
       byUser: perUserRows,
-      byStatus: statusRows
+      byStatus: statusRows,
+      pagination: {
+        page,
+        limit,
+        total: totalUsers,
+        totalPages: Math.ceil(totalUsers / limit)
+      }
     });
   } catch (error) {
     console.error('Analytics summary error:', error);

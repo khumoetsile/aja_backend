@@ -1,0 +1,24 @@
+{
+  "total": 2,
+  "created": 0,
+  "skipped": 2,
+  "errors": 0,
+  "emailsSent": 0,
+  "emailErrors": 0,
+  "details": [
+    {
+      "index": 1,
+      "name": "KEALEBOGA MONYAI",
+      "email": "kmolabi@gmail.com",
+      "status": "skipped",
+      "reason": "User already exists"
+    },
+    {
+      "index": 2,
+      "name": "NTHABISENG KGOSIKWENA",
+      "email": "kmolabi@bitri.co.bw",
+      "status": "skipped",
+      "reason": "User already exists"
+    }
+  ]
+}

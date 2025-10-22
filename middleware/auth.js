@@ -12,11 +12,15 @@ const authenticateToken = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'aja-secret-key');
     
+    console.log('JWT decoded:', decoded);
+    
     // Get user details from database
     const result = await query(
       'SELECT id, email, role, first_name, last_name, department FROM users WHERE id = ? AND is_active = true',
       [decoded.userId]
     );
+    
+    console.log('Auth query result:', result);
 
     if (result[0].length === 0) {
       return res.status(401).json({ error: 'User not found or inactive' });

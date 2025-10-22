@@ -9,7 +9,12 @@ const pool = mysql.createPool({
   port: process.env.DB_PORT || 3306,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  acquireTimeout: 60000,
+  timeout: 60000,
+  reconnect: true,
+  keepAliveInitialDelay: 0,
+  enableKeepAlive: true
 });
 
 // Test the connection
@@ -40,7 +45,29 @@ const allowedOrigins = [
   'http://localhost:4200'
 ].filter(Boolean);
 
+// Enhanced query function with retry logic
+const query = async (sql, params) => {
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const [rows] = await pool.execute(sql, params);
+      return [rows];
+    } catch (error) {
+      console.error(`Database query error (${retries} retries left):`, error.message);
+      if (error.code === 'ECONNRESET' || error.code === 'PROTOCOL_CONNECTION_LOST') {
+        retries--;
+        if (retries > 0) {
+          console.log('Retrying database connection...');
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+};
+
 module.exports = {
-  query: (sql, params) => pool.execute(sql, params),
+  query,
   pool
 }; 

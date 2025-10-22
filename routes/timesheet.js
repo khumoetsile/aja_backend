@@ -470,7 +470,7 @@ router.get('/all-entries', authenticateToken, async (req, res) => {
     const countResult = await query(countQuery, queryParams);
     const total = countResult[0][0].total;
     
-    // Get paginated data
+    // Get paginated data - optimized for large datasets
     const dataQuery = `
       SELECT te.id, te.date, te.client_file_number, te.department, te.task, te.activity, 
       te.priority, te.start_time, te.end_time, te.total_hours, te.status, te.billable, 

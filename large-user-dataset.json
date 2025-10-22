@@ -1,0 +1,63 @@
+[
+  {
+    "Employee Name": "KEALEBOGA MONYAI",
+    "Department": "Property",
+    "Email Address": "kmolabi@gmail.com", 
+    "Role": "ADMIN"
+  },
+  {
+    "Employee Name": "NTHABISENG KGOSIKWENA",
+    "Department": "Property",
+    "Email Address": "kmolabi@bitri.co.bw", 
+    "Role": "STAFF"
+  },
+  {
+    "Employee Name": "THABO MOKOENA",
+    "Department": "Legal",
+    "Email Address": "thabo.mokoena@aja.com",
+    "Role": "SUPERVISOR"
+  },
+  {
+    "Employee Name": "LEROY MOLOI",
+    "Department": "Legal",
+    "Email Address": "leroy.moloi@aja.com",
+    "Role": "STAFF"
+  },
+  {
+    "Employee Name": "KAGISO NDLOVU",
+    "Department": "Operations",
+    "Email Address": "kagiso.ndlovu@aja.com",
+    "Role": "STAFF"
+  },
+  {
+    "Employee Name": "AMINA HASSAN",
+    "Department": "Finance",
+    "Email Address": "amina.hassan@aja.com",
+    "Role": "STAFF"
+  },
+  {
+    "Employee Name": "PETER KHOZA",
+    "Department": "IT",
+    "Email Address": "peter.khoza@aja.com",
+    "Role": "STAFF"
+  },
+  {
+    "Employee Name": "DINEO MOYO",
+    "Department": "HR",
+    "Email Address": "dineo.moyo@aja.com",
+    "Role": "SUPERVISOR"
+  },
+  {
+    "Employee Name": "THATO GARE",
+    "Department": "HR",
+    "Email Address": "thato.gare@aja.com",
+    "Role": "STAFF"
+  },
+  {
+    "Employee Name": "NEO DUBE",
+    "Department": "IT",
+    "Email Address": "neo.dube@aja.com",
+    "Role": "SUPERVISOR"
+  }
+]
+
