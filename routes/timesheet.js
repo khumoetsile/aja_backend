@@ -506,7 +506,7 @@ router.get('/all-entries', authenticateToken, async (req, res) => {
 // Create new timesheet entry
 router.post('/entries', [
   authenticateToken,
-  body('date').isISO8601().toDate(),
+  body('date').isISO8601().withMessage('Date must be in YYYY-MM-DD format'),
   body('client_file_number').trim().isLength({ min: 1 }).withMessage('Client file number is required'),
   body('department').trim().isLength({ min: 1 }).withMessage('Department is required'),
   body('task').trim().isLength({ min: 1 }).withMessage('Task is required'),
@@ -541,6 +541,11 @@ router.post('/entries', [
       start_time, end_time, status, billable, comments 
     } = req.body;
 
+    // Process date to ensure it's stored correctly (avoid timezone issues)
+    // Store the date as-is to avoid timezone conversion issues
+    const processedDate = date; // Keep the original date string
+    console.log('📅 Original date:', date, 'Processed date:', processedDate);
+
     // Validate that end time is after start time
     if (start_time >= end_time) {
       return res.status(400).json({ error: 'End time must be after start time' });
@@ -548,35 +553,55 @@ router.post('/entries', [
 
     // Check for overlapping entries on the same date
     const overlappingResult = await query(
-      `SELECT id FROM timesheet_entries 
+      `SELECT id, date, start_time, end_time, client_file_number, task, activity 
+       FROM timesheet_entries 
        WHERE user_id = ? AND date = ? 
        AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?) OR (start_time >= ? AND end_time <= ?))`,
-      [req.user.id, date, start_time, start_time, end_time, end_time, start_time, end_time]
+      [req.user.id, processedDate, start_time, start_time, end_time, end_time, start_time, end_time]
     );
 
     if (overlappingResult[0].length > 0) {
-      return res.status(400).json({ error: 'Time entry overlaps with existing entry' });
+      const overlappingEntry = overlappingResult[0][0];
+      return res.status(400).json({ 
+        error: 'Time entry overlaps with existing entry',
+        overlappingEntry: {
+          date: overlappingEntry.date,
+          start_time: overlappingEntry.start_time,
+          end_time: overlappingEntry.end_time,
+          client_file_number: overlappingEntry.client_file_number,
+          task: overlappingEntry.task,
+          activity: overlappingEntry.activity
+        }
+      });
     }
 
     const result = await query(
       `INSERT INTO timesheet_entries (user_id, date, client_file_number, department, task, activity, 
-       priority, start_time, end_time, status, billable, comments, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [req.user.id, date, client_file_number, department, task, activity, 
+       priority, start_time, end_time, status, billable, comments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.user.id, processedDate, client_file_number, department, task, activity, 
        priority, start_time, end_time, status, billable, comments || '']
     );
 
     // Get the created entry
     const [newEntry] = await query(
-      `SELECT id, date, client_file_number, department, task, activity, priority, 
+      `SELECT id, DATE_FORMAT(date, '%Y-%m-%d') as date, client_file_number, department, task, activity, priority, 
        start_time, end_time, total_hours, status, billable, comments, created_at 
        FROM timesheet_entries WHERE id = ?`,
       [result[0].insertId]
     );
 
-    res.status(201).json({
+    // Get total count of entries for this user
+    const [countResult] = await query(
+      `SELECT COUNT(*) as total FROM timesheet_entries WHERE user_id = ?`,
+      [req.user.id]
+    );
+    const totalEntries = countResult[0].total;
+
+    res.status(201).json({ 
       message: 'Timesheet entry created successfully',
-      entry: newEntry[0]
+      entry: newEntry[0],
+      totalEntries: totalEntries
     });
 
   } catch (error) {
@@ -588,7 +613,7 @@ router.post('/entries', [
 // Update timesheet entry
 router.put('/entries/:id', [
   authenticateToken,
-  body('date').isISO8601().toDate(),
+  body('date').isISO8601().withMessage('Date must be in YYYY-MM-DD format'),
   body('client_file_number').trim().isLength({ min: 1 }).withMessage('Client file number is required'),
   body('department').trim().isLength({ min: 1 }).withMessage('Department is required'),
   body('task').trim().isLength({ min: 1 }).withMessage('Task is required'),
@@ -624,6 +649,10 @@ router.put('/entries/:id', [
       start_time, end_time, status, billable, comments 
     } = req.body;
 
+    // Process date to ensure it's stored correctly (avoid timezone issues)
+    const processedDate = date; // Keep the original date string
+    console.log('📅 UPDATE - Original date:', date, 'Processed date:', processedDate);
+
     // Validate that end time is after start time
     if (start_time >= end_time) {
       return res.status(400).json({ error: 'End time must be after start time' });
@@ -641,14 +670,26 @@ router.put('/entries/:id', [
 
     // Check for overlapping entries (excluding current entry)
     const overlappingResult = await query(
-      `SELECT id FROM timesheet_entries 
+      `SELECT id, date, start_time, end_time, client_file_number, task, activity 
+       FROM timesheet_entries 
        WHERE user_id = ? AND date = ? AND id != ? 
        AND ((start_time <= ? AND end_time > ?) OR (start_time < ? AND end_time >= ?) OR (start_time >= ? AND end_time <= ?))`,
-      [req.user.id, date, id, start_time, start_time, end_time, end_time, start_time, end_time]
+      [req.user.id, processedDate, id, start_time, start_time, end_time, end_time, start_time, end_time]
     );
 
     if (overlappingResult[0].length > 0) {
-      return res.status(400).json({ error: 'Time entry overlaps with existing entry' });
+      const overlappingEntry = overlappingResult[0][0];
+      return res.status(400).json({ 
+        error: 'Time entry overlaps with existing entry',
+        overlappingEntry: {
+          date: overlappingEntry.date,
+          start_time: overlappingEntry.start_time,
+          end_time: overlappingEntry.end_time,
+          client_file_number: overlappingEntry.client_file_number,
+          task: overlappingEntry.task,
+          activity: overlappingEntry.activity
+        }
+      });
     }
 
     await query(
@@ -657,13 +698,13 @@ router.put('/entries/:id', [
            priority = ?, start_time = ?, end_time = ?, status = ?, billable = ?, 
            comments = ?, updated_at = NOW()
        WHERE id = ? AND user_id = ?`,
-      [date, client_file_number, department, task, activity, priority, 
+      [processedDate, client_file_number, department, task, activity, priority, 
        start_time, end_time, status, billable, comments || '', id, req.user.id]
     );
 
     // Get the updated entry
     const [updatedEntry] = await query(
-      `SELECT id, date, client_file_number, department, task, activity, priority, 
+      `SELECT id, DATE_FORMAT(date, '%Y-%m-%d') as date, client_file_number, department, task, activity, priority, 
        start_time, end_time, total_hours, status, billable, comments, updated_at 
        FROM timesheet_entries WHERE id = ?`,
       [id]
